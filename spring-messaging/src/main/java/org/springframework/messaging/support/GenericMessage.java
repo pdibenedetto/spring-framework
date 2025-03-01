@@ -19,7 +19,8 @@ package org.springframework.messaging.support;
 import java.io.Serializable;
 import java.util.Map;
 
-import org.springframework.lang.Nullable;
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
 import org.springframework.util.Assert;
@@ -98,7 +99,7 @@ public class GenericMessage<T> implements Message<T>, Serializable {
 	@Override
 	public int hashCode() {
 		// Using nullSafeHashCode for proper array hashCode handling
-		return ObjectUtils.nullSafeHashCode(this.payload) * 23 + this.headers.hashCode();
+		return ObjectUtils.nullSafeHash(this.payload, this.headers);
 	}
 
 	@Override

@@ -22,9 +22,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.MethodParameter;
-import org.springframework.lang.Nullable;
 import org.springframework.util.ConcurrentReferenceHashMap;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.ReflectionUtils;
@@ -33,7 +35,7 @@ import org.springframework.util.StringUtils;
 /**
  * A description of a JavaBeans Property that allows us to avoid a dependency on
  * {@code java.beans.PropertyDescriptor}. The {@code java.beans} package
- * is not available in a number of environments (e.g. Android, Java ME), so this is
+ * is not available in a number of environments (for example, Android, Java ME), so this is
  * desirable for portability of Spring's core conversion facility.
  *
  * <p>Used to build a {@link TypeDescriptor} from a property location. The built
@@ -51,18 +53,15 @@ public final class Property {
 
 	private final Class<?> objectType;
 
-	@Nullable
-	private final Method readMethod;
+	private final @Nullable Method readMethod;
 
-	@Nullable
-	private final Method writeMethod;
+	private final @Nullable Method writeMethod;
 
 	private final String name;
 
 	private final MethodParameter methodParameter;
 
-	@Nullable
-	private Annotation[] annotations;
+	private Annotation @Nullable [] annotations;
 
 
 	public Property(Class<?> objectType, @Nullable Method readMethod, @Nullable Method writeMethod) {
@@ -88,32 +87,30 @@ public final class Property {
 	}
 
 	/**
-	 * The name of the property: e.g. 'foo'
+	 * The name of the property: for example, 'foo'.
 	 */
 	public String getName() {
 		return this.name;
 	}
 
 	/**
-	 * The property type: e.g. {@code java.lang.String}
+	 * The property type: for example, {@code java.lang.String}.
 	 */
 	public Class<?> getType() {
 		return this.methodParameter.getParameterType();
 	}
 
 	/**
-	 * The property getter method: e.g. {@code getFoo()}
+	 * The property getter method: for example, {@code getFoo()}.
 	 */
-	@Nullable
-	public Method getReadMethod() {
+	public @Nullable Method getReadMethod() {
 		return this.readMethod;
 	}
 
 	/**
-	 * The property setter method: e.g. {@code setFoo(String)}
+	 * The property setter method: for example, {@code setFoo(String)}.
 	 */
-	@Nullable
-	public Method getWriteMethod() {
+	public @Nullable Method getWriteMethod() {
 		return this.writeMethod;
 	}
 
@@ -146,7 +143,7 @@ public final class Property {
 					index += 2;
 				}
 				else {
-					// Record-style plain accessor method, e.g. name()
+					// Record-style plain accessor method, for example, name()
 					index = 0;
 				}
 			}
@@ -184,16 +181,14 @@ public final class Property {
 		return write;
 	}
 
-	@Nullable
-	private MethodParameter resolveReadMethodParameter() {
+	private @Nullable MethodParameter resolveReadMethodParameter() {
 		if (getReadMethod() == null) {
 			return null;
 		}
 		return new MethodParameter(getReadMethod(), -1).withContainingClass(getObjectType());
 	}
 
-	@Nullable
-	private MethodParameter resolveWriteMethodParameter() {
+	private @Nullable MethodParameter resolveWriteMethodParameter() {
 		if (getWriteMethod() == null) {
 			return null;
 		}
@@ -223,8 +218,7 @@ public final class Property {
 		}
 	}
 
-	@Nullable
-	private Field getField() {
+	private @Nullable Field getField() {
 		String name = getName();
 		if (!StringUtils.hasLength(name)) {
 			return null;
@@ -244,8 +238,7 @@ public final class Property {
 		return field;
 	}
 
-	@Nullable
-	private Class<?> declaringClass() {
+	private @Nullable Class<?> declaringClass() {
 		if (getReadMethod() != null) {
 			return getReadMethod().getDeclaringClass();
 		}
@@ -269,7 +262,7 @@ public final class Property {
 
 	@Override
 	public int hashCode() {
-		return (ObjectUtils.nullSafeHashCode(this.objectType) * 31 + ObjectUtils.nullSafeHashCode(this.name));
+		return Objects.hash(this.objectType, this.name);
 	}
 
 }

@@ -21,8 +21,10 @@ import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
-import org.springframework.lang.Nullable;
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.ObjectUtils;
@@ -40,8 +42,7 @@ final class OpaqueUriComponents extends UriComponents {
 
 	private static final MultiValueMap<String, String> QUERY_PARAMS_NONE = new LinkedMultiValueMap<>();
 
-	@Nullable
-	private final String ssp;
+	private final @Nullable String ssp;
 
 
 	OpaqueUriComponents(@Nullable String scheme, @Nullable String schemeSpecificPart, @Nullable String fragment) {
@@ -51,20 +52,17 @@ final class OpaqueUriComponents extends UriComponents {
 
 
 	@Override
-	@Nullable
-	public String getSchemeSpecificPart() {
+	public @Nullable String getSchemeSpecificPart() {
 		return this.ssp;
 	}
 
 	@Override
-	@Nullable
-	public String getUserInfo() {
+	public @Nullable String getUserInfo() {
 		return null;
 	}
 
 	@Override
-	@Nullable
-	public String getHost() {
+	public @Nullable String getHost() {
 		return null;
 	}
 
@@ -74,8 +72,7 @@ final class OpaqueUriComponents extends UriComponents {
 	}
 
 	@Override
-	@Nullable
-	public String getPath() {
+	public @Nullable String getPath() {
 		return null;
 	}
 
@@ -85,8 +82,7 @@ final class OpaqueUriComponents extends UriComponents {
 	}
 
 	@Override
-	@Nullable
-	public String getQuery() {
+	public @Nullable String getQuery() {
 		return null;
 	}
 
@@ -166,10 +162,7 @@ final class OpaqueUriComponents extends UriComponents {
 
 	@Override
 	public int hashCode() {
-		int result = ObjectUtils.nullSafeHashCode(getScheme());
-		result = 31 * result + ObjectUtils.nullSafeHashCode(this.ssp);
-		result = 31 * result + ObjectUtils.nullSafeHashCode(getFragment());
-		return result;
+		return Objects.hash(getScheme(), this.ssp, getFragment());
 	}
 
 }

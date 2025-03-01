@@ -19,7 +19,7 @@ example sets up such an event listener:
 ======
 Java::
 +
-[source,java,indent=0,subs="verbatim,quotes",role="primary"]
+[source,java,indent=0,subs="verbatim,quotes"]
 ----
 	@Component
 	public class MyComponent {
@@ -33,7 +33,7 @@ Java::
 
 Kotlin::
 +
-[source,kotlin,indent=0,subs="verbatim,quotes",role="secondary"]
+[source,kotlin,indent=0,subs="verbatim,quotes"]
 ----
 	@Component
 	class MyComponent {
@@ -63,7 +63,7 @@ For the former, listeners are guaranteed to see the current thread-bound transac
 Since the latter uses the Reactor context instead of thread-local variables, the transaction
 context needs to be included in the published event instance as the event source.
 See the
-{api-spring-framework}/transaction/reactive/TransactionalEventPublisher.html[`TransactionalEventPublisher`]
+{spring-framework-api}/transaction/reactive/TransactionalEventPublisher.html[`TransactionalEventPublisher`]
 javadoc for details.
 ====
 

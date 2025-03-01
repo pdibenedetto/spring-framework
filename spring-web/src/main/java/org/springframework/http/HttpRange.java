@@ -21,12 +21,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.StringJoiner;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourceRegion;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
@@ -233,8 +235,7 @@ public abstract class HttpRange {
 
 		private final long firstPos;
 
-		@Nullable
-		private final Long lastPos;
+		private final @Nullable Long lastPos;
 
 		public ByteRange(long firstPos, @Nullable Long lastPos) {
 			assertPositions(firstPos, lastPos);
@@ -276,8 +277,7 @@ public abstract class HttpRange {
 
 		@Override
 		public int hashCode() {
-			return (ObjectUtils.nullSafeHashCode(this.firstPos) * 31 +
-					ObjectUtils.nullSafeHashCode(this.lastPos));
+			return Objects.hash(this.firstPos, this.lastPos);
 		}
 
 		@Override

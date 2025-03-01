@@ -24,10 +24,10 @@ import jakarta.jms.JMSException;
 import jakarta.jms.Session;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jms.JmsException;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 /**
@@ -63,8 +63,7 @@ public abstract class JmsAccessor implements InitializingBean {
 	/** Logger available to subclasses. */
 	protected final Log logger = LogFactory.getLog(getClass());
 
-	@Nullable
-	private ConnectionFactory connectionFactory;
+	private @Nullable ConnectionFactory connectionFactory;
 
 	private boolean sessionTransacted = false;
 
@@ -82,8 +81,7 @@ public abstract class JmsAccessor implements InitializingBean {
 	 * Return the ConnectionFactory that this accessor uses for obtaining
 	 * JMS {@link Connection Connections}.
 	 */
-	@Nullable
-	public ConnectionFactory getConnectionFactory() {
+	public @Nullable ConnectionFactory getConnectionFactory() {
 		return this.connectionFactory;
 	}
 
@@ -167,8 +165,6 @@ public abstract class JmsAccessor implements InitializingBean {
 	 * @see jakarta.jms.Connection#createSession(boolean, int)
 	 */
 	public void setSessionAcknowledgeMode(int sessionAcknowledgeMode) {
-		Assert.isTrue(sessionConstants.containsValue(sessionAcknowledgeMode),
-				"Only values of acknowledge mode constants allowed");
 		this.sessionAcknowledgeMode = sessionAcknowledgeMode;
 	}
 

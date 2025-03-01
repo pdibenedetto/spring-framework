@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,22 +19,24 @@ package org.springframework.core;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
 import java.util.function.Function;
 
+import io.smallrye.mutiny.Multi;
+import io.smallrye.mutiny.Uni;
+import org.jspecify.annotations.Nullable;
+import org.reactivestreams.FlowAdapters;
 import org.reactivestreams.Publisher;
-import org.reactivestreams.Subscriber;
-import org.reactivestreams.Subscription;
 import reactor.adapter.JdkFlowAdapter;
 import reactor.blockhound.BlockHound;
 import reactor.blockhound.integration.BlockHoundIntegration;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import org.springframework.lang.Nullable;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ConcurrentReferenceHashMap;
 import org.springframework.util.ReflectionUtils;
@@ -43,7 +45,7 @@ import org.springframework.util.ReflectionUtils;
  * A registry of adapters to adapt Reactive Streams {@link Publisher} to/from various
  * async/reactive types such as {@code CompletableFuture}, RxJava {@code Flowable}, etc.
  * This is designed to complement Spring's Reactor {@code Mono}/{@code Flux} support while
- * also being usable without Reactor, e.g. just for {@code org.reactivestreams} bridging.
+ * also being usable without Reactor, for example, just for {@code org.reactivestreams} bridging.
  *
  * <p>By default, depending on classpath availability, adapters are registered for Reactor
  * (including {@code CompletableFuture} and {@code Flow.Publisher} adapters), RxJava 3,
@@ -57,8 +59,9 @@ import org.springframework.util.ReflectionUtils;
  */
 public class ReactiveAdapterRegistry {
 
-	@Nullable
-	private static volatile ReactiveAdapterRegistry sharedInstance;
+	private static volatile @Nullable ReactiveAdapterRegistry sharedInstance;
+
+	private static final boolean reactiveStreamsPresent;
 
 	private static final boolean reactorPresent;
 
@@ -70,6 +73,7 @@ public class ReactiveAdapterRegistry {
 
 	static {
 		ClassLoader classLoader = ReactiveAdapterRegistry.class.getClassLoader();
+		reactiveStreamsPresent = ClassUtils.isPresent("org.reactivestreams.Publisher", classLoader);
 		reactorPresent = ClassUtils.isPresent("reactor.core.publisher.Flux", classLoader);
 		rxjava3Present = ClassUtils.isPresent("io.reactivex.rxjava3.core.Flowable", classLoader);
 		kotlinCoroutinesPresent = ClassUtils.isPresent("kotlinx.coroutines.reactor.MonoKt", classLoader);
@@ -83,8 +87,12 @@ public class ReactiveAdapterRegistry {
 	 * Create a registry and auto-register default adapters.
 	 * @see #getSharedInstance()
 	 */
-	@SuppressWarnings("unchecked")
 	public ReactiveAdapterRegistry() {
+		// Defensive guard for the Reactive Streams API itself
+		if (!reactiveStreamsPresent) {
+			return;
+		}
+
 		// Reactor
 		if (reactorPresent) {
 			new ReactorRegistrar().registerAdapters(this);
@@ -107,43 +115,68 @@ public class ReactiveAdapterRegistry {
 
 		// Simple Flow.Publisher bridge if Reactor is not present
 		if (!reactorPresent) {
-			registerReactiveType(
-					ReactiveTypeDescriptor.multiValue(Flow.Publisher.class, () -> PublisherToRS.EMPTY_FLOW),
-					source -> new PublisherToRS<>((Flow.Publisher<Object>) source),
-					source -> new PublisherToFlow<>((Publisher<Object>) source));
+			new FlowAdaptersRegistrar().registerAdapters(this);
 		}
 	}
 
 
 	/**
-	 * Whether the registry has any adapters.
+	 * Register a reactive type along with functions to adapt to and from a
+	 * Reactive Streams {@link Publisher}. The function arguments assume that
+	 * their input is neither {@code null} nor {@link Optional}.
+	 * <p>This variant registers the new adapter after existing adapters.
+	 * It will be matched for the exact reactive type if no earlier adapter was
+	 * registered for the specific type, and it will be matched for assignability
+	 * in a second pass if no earlier adapter had an assignable type before.
+	 * @see #registerReactiveTypeOverride
+	 * @see #getAdapter
 	 */
-	public boolean hasAdapters() {
-		return !this.adapters.isEmpty();
+	public void registerReactiveType(ReactiveTypeDescriptor descriptor,
+			Function<Object, Publisher<?>> toAdapter, Function<Publisher<?>, Object> fromAdapter) {
+
+		this.adapters.add(buildAdapter(descriptor, toAdapter, fromAdapter));
 	}
 
 	/**
 	 * Register a reactive type along with functions to adapt to and from a
 	 * Reactive Streams {@link Publisher}. The function arguments assume that
 	 * their input is neither {@code null} nor {@link Optional}.
+	 * <p>This variant registers the new adapter first, effectively overriding
+	 * any previously registered adapters for the same reactive type. This allows
+	 * for overriding existing adapters, in particular default adapters.
+	 * <p>Note that existing adapters for specific types will still match before
+	 * an assignability match with the new adapter. In order to override all
+	 * existing matches, a new reactive type adapter needs to be registered
+	 * for every specific type, not relying on subtype assignability matches.
+	 * @since 5.3.30
+	 * @see #registerReactiveType
+	 * @see #getAdapter
 	 */
-	public void registerReactiveType(ReactiveTypeDescriptor descriptor,
+	public void registerReactiveTypeOverride(ReactiveTypeDescriptor descriptor,
 			Function<Object, Publisher<?>> toAdapter, Function<Publisher<?>, Object> fromAdapter) {
 
-		if (reactorPresent) {
-			this.adapters.add(new ReactorAdapter(descriptor, toAdapter, fromAdapter));
-		}
-		else {
-			this.adapters.add(new ReactiveAdapter(descriptor, toAdapter, fromAdapter));
-		}
+		this.adapters.add(0, buildAdapter(descriptor, toAdapter, fromAdapter));
+	}
+
+	private ReactiveAdapter buildAdapter(ReactiveTypeDescriptor descriptor,
+			Function<Object, Publisher<?>> toAdapter, Function<Publisher<?>, Object> fromAdapter) {
+
+		return (reactorPresent ? new ReactorAdapter(descriptor, toAdapter, fromAdapter) :
+				new ReactiveAdapter(descriptor, toAdapter, fromAdapter));
+	}
+
+	/**
+	 * Return whether the registry has any adapters.
+	 */
+	public boolean hasAdapters() {
+		return !this.adapters.isEmpty();
 	}
 
 	/**
 	 * Get the adapter for the given reactive type.
 	 * @return the corresponding adapter, or {@code null} if none available
 	 */
-	@Nullable
-	public ReactiveAdapter getAdapter(Class<?> reactiveType) {
+	public @Nullable ReactiveAdapter getAdapter(Class<?> reactiveType) {
 		return getAdapter(reactiveType, null);
 	}
 
@@ -156,8 +189,7 @@ public class ReactiveAdapterRegistry {
 	 * (i.e. to adapt from; may be {@code null} if the reactive type is specified)
 	 * @return the corresponding adapter, or {@code null} if none available
 	 */
-	@Nullable
-	public ReactiveAdapter getAdapter(@Nullable Class<?> reactiveType, @Nullable Object source) {
+	public @Nullable ReactiveAdapter getAdapter(@Nullable Class<?> reactiveType, @Nullable Object source) {
 		if (this.adapters.isEmpty()) {
 			return null;
 		}
@@ -345,14 +377,19 @@ public class ReactiveAdapterRegistry {
 
 			if (Flow.Publisher.class.isAssignableFrom(uniToPublisher.getReturnType())) {
 				// Mutiny 2 based on Flow.Publisher
-				Method uniPublisher = ClassUtils.getMethod(io.smallrye.mutiny.groups.UniCreate.class, "publisher", Flow.Publisher.class);
-				Method multiPublisher = ClassUtils.getMethod(io.smallrye.mutiny.groups.MultiCreate.class, "publisher", Flow.Publisher.class);
+				Method uniPublisher = ClassUtils.getMethod(
+						io.smallrye.mutiny.groups.UniCreate.class, "publisher", Flow.Publisher.class);
+				Method multiPublisher = ClassUtils.getMethod(
+						io.smallrye.mutiny.groups.MultiCreate.class, "publisher", Flow.Publisher.class);
 				registry.registerReactiveType(uniDesc,
-						uni -> new PublisherToRS<>((Flow.Publisher<Object>) ReflectionUtils.invokeMethod(uniToPublisher, ((io.smallrye.mutiny.Uni<?>) uni).convert())),
-						publisher -> ReflectionUtils.invokeMethod(uniPublisher, io.smallrye.mutiny.Uni.createFrom(), new PublisherToFlow<>(publisher)));
+						uni -> FlowAdapters.toPublisher((Flow.Publisher<Object>)
+								Objects.requireNonNull(ReflectionUtils.invokeMethod(uniToPublisher, ((Uni<?>) uni).convert()))),
+						publisher -> Objects.requireNonNull(ReflectionUtils.invokeMethod(uniPublisher, Uni.createFrom(),
+								FlowAdapters.toFlowPublisher(publisher))));
 				registry.registerReactiveType(multiDesc,
-						multi -> new PublisherToRS<>((Flow.Publisher<Object>) multi),
-						publisher -> ReflectionUtils.invokeMethod(multiPublisher, io.smallrye.mutiny.Multi.createFrom(), new PublisherToFlow<>(publisher)));
+						multi -> FlowAdapters.toPublisher((Flow.Publisher<Object>) multi),
+						publisher -> Objects.requireNonNull(ReflectionUtils.invokeMethod(multiPublisher, Multi.createFrom(),
+								FlowAdapters.toFlowPublisher(publisher))));
 			}
 			else {
 				// Mutiny 1 based on Reactive Streams
@@ -367,7 +404,7 @@ public class ReactiveAdapterRegistry {
 	}
 
 
-	private static class PublisherToFlow<T> implements Flow.Publisher<T> {
+	private static class FlowAdaptersRegistrar {
 
 		private static final Flow.Subscription EMPTY_SUBSCRIPTION = new Flow.Subscription() {
 			@Override
@@ -378,136 +415,17 @@ public class ReactiveAdapterRegistry {
 			}
 		};
 
-		@Nullable
-		private final Publisher<T> publisher;
-
-		public PublisherToFlow(@Nullable Publisher<T> publisher) {
-			this.publisher = publisher;
-		}
-
-		@Override
-		public void subscribe(Flow.Subscriber<? super T> subscriber) {
-			if (this.publisher != null) {
-				this.publisher.subscribe(new SubscriberToFlow<>(subscriber));
-			}
-			else {
-				subscriber.onSubscribe(EMPTY_SUBSCRIPTION);
-				subscriber.onComplete();
-			}
-		}
-	}
-
-
-	private static class PublisherToRS<T> implements Publisher<T> {
-
-		private static final Flow.Publisher<Object> EMPTY_FLOW = new PublisherToFlow<>(null);
-
-		private final Flow.Publisher<T> publisher;
+		private static final Flow.Publisher<Object> EMPTY_PUBLISHER = subscriber -> {
+			subscriber.onSubscribe(EMPTY_SUBSCRIPTION);
+			subscriber.onComplete();
+		};
 
 		@SuppressWarnings("unchecked")
-		public PublisherToRS(@Nullable Flow.Publisher<T> publisher) {
-			this.publisher = (publisher != null ? publisher : (Flow.Publisher<T>) EMPTY_FLOW);
-		}
-
-		@Override
-		public void subscribe(Subscriber<? super T> subscriber) {
-			this.publisher.subscribe(new SubscriberToRS<>(subscriber));
-		}
-	}
-
-
-	private static class SubscriberToFlow<T> implements Subscriber<T>, Flow.Subscription {
-
-		private final Flow.Subscriber<? super T> subscriber;
-
-		@Nullable
-		private Subscription subscription;
-
-		public SubscriberToFlow(Flow.Subscriber<? super T> subscriber) {
-			this.subscriber = subscriber;
-		}
-
-		@Override
-		public void onSubscribe(Subscription subscription) {
-			this.subscription = subscription;
-			this.subscriber.onSubscribe(this);
-		}
-
-		@Override
-		public void onNext(T o) {
-			this.subscriber.onNext(o);
-		}
-
-		@Override
-		public void onError(Throwable t) {
-			this.subscriber.onError(t);
-		}
-
-		@Override
-		public void onComplete() {
-			this.subscriber.onComplete();
-		}
-
-		@Override
-		public void request(long n) {
-			if (this.subscription != null) {
-				this.subscription.request(n);
-			}
-		}
-
-		@Override
-		public void cancel() {
-			if (this.subscription != null) {
-				this.subscription.cancel();
-			}
-		}
-	}
-
-
-	private static class SubscriberToRS<T> implements Flow.Subscriber<T>, Subscription {
-
-		private final Subscriber<? super T> subscriber;
-
-		@Nullable
-		private Flow.Subscription subscription;
-
-		public SubscriberToRS(Subscriber<? super T> subscriber) {
-			this.subscriber = subscriber;
-		}
-
-		@Override
-		public void onSubscribe(Flow.Subscription subscription) {
-			this.subscription = subscription;
-			this.subscriber.onSubscribe(this);
-		}
-
-		@Override
-		public void onNext(T o) {
-			this.subscriber.onNext(o);
-		}
-
-		@Override
-		public void onError(Throwable throwable) {
-			this.subscriber.onError(throwable);
-		}
-
-		@Override
-		public void onComplete() {
-			this.subscriber.onComplete();
-		}
-
-		@Override
-		public void request(long n) {
-			if (this.subscription != null) {
-				this.subscription.request(n);
-			}
-		}
-
-		@Override
-		public void cancel() {
-			if (this.subscription != null) {
-				this.subscription.cancel();
-			}
+		void registerAdapters(ReactiveAdapterRegistry registry) {
+			registry.registerReactiveType(
+					ReactiveTypeDescriptor.multiValue(Flow.Publisher.class, () -> EMPTY_PUBLISHER),
+					source -> FlowAdapters.toPublisher((Flow.Publisher<Object>) source),
+					source -> FlowAdapters.toFlowPublisher((Publisher<Object>) source));
 		}
 	}
 
@@ -523,10 +441,13 @@ public class ReactiveAdapterRegistry {
 		public void applyTo(BlockHound.Builder builder) {
 			// Avoid hard references potentially anywhere in spring-core (no need for structural dependency)
 
-			String className = "org.springframework.util.ConcurrentReferenceHashMap$Segment";
-			builder.allowBlockingCallsInside(className, "doTask");
-			builder.allowBlockingCallsInside(className, "clear");
-			builder.allowBlockingCallsInside(className, "restructure");
+			String segmentClassName = "org.springframework.util.ConcurrentReferenceHashMap$Segment";
+			builder.allowBlockingCallsInside(segmentClassName, "doTask");
+			builder.allowBlockingCallsInside(segmentClassName, "clear");
+			builder.allowBlockingCallsInside(segmentClassName, "restructure");
+
+			String referenceManagerClassName = "org.springframework.util.ConcurrentReferenceHashMap$ReferenceManager";
+			builder.allowBlockingCallsInside(referenceManagerClassName, "pollForPurge");
 		}
 	}
 

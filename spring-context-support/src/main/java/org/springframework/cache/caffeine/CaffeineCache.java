@@ -23,9 +23,9 @@ import java.util.function.Supplier;
 
 import com.github.benmanes.caffeine.cache.AsyncCache;
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.cache.support.AbstractValueAdaptingCache;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 /**
@@ -50,8 +50,7 @@ public class CaffeineCache extends AbstractValueAdaptingCache {
 
 	private final com.github.benmanes.caffeine.cache.Cache<Object, Object> cache;
 
-	@Nullable
-	private AsyncCache<Object, Object> asyncCache;
+	private @Nullable AsyncCache<Object, Object> asyncCache;
 
 
 	/**
@@ -130,17 +129,15 @@ public class CaffeineCache extends AbstractValueAdaptingCache {
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Nullable
-	public <T> T get(Object key, Callable<T> valueLoader) {
+	public <T> @Nullable T get(Object key, Callable<T> valueLoader) {
 		return (T) fromStoreValue(this.cache.get(key, new LoadFunction(valueLoader)));
 	}
 
 	@Override
-	@Nullable
-	public CompletableFuture<?> retrieve(Object key) {
+	public @Nullable CompletableFuture<?> retrieve(Object key) {
 		CompletableFuture<?> result = getAsyncCache().getIfPresent(key);
 		if (result != null && isAllowNullValues()) {
-			result = result.handle((value, ex) -> fromStoreValue(value));
+			result = result.thenApply(this::toValueWrapper);
 		}
 		return result;
 	}
@@ -148,12 +145,18 @@ public class CaffeineCache extends AbstractValueAdaptingCache {
 	@SuppressWarnings("unchecked")
 	@Override
 	public <T> CompletableFuture<T> retrieve(Object key, Supplier<CompletableFuture<T>> valueLoader) {
-		return (CompletableFuture<T>) getAsyncCache().get(key, (k, e) -> valueLoader.get());
+		if (isAllowNullValues()) {
+			return (CompletableFuture<T>) getAsyncCache()
+					.get(key, (k, e) -> valueLoader.get().thenApply(this::toStoreValue))
+					.thenApply(this::fromStoreValue);
+		}
+		else {
+			return (CompletableFuture<T>) getAsyncCache().get(key, (k, e) -> valueLoader.get());
+		}
 	}
 
 	@Override
-	@Nullable
-	protected Object lookup(Object key) {
+	protected @Nullable Object lookup(Object key) {
 		if (this.cache instanceof LoadingCache<Object, Object> loadingCache) {
 			return loadingCache.get(key);
 		}
@@ -166,8 +169,7 @@ public class CaffeineCache extends AbstractValueAdaptingCache {
 	}
 
 	@Override
-	@Nullable
-	public ValueWrapper putIfAbsent(Object key, @Nullable Object value) {
+	public @Nullable ValueWrapper putIfAbsent(Object key, @Nullable Object value) {
 		PutIfAbsentFunction callable = new PutIfAbsentFunction(value);
 		Object result = this.cache.get(key, callable);
 		return (callable.called ? null : toValueWrapper(result));
@@ -198,8 +200,7 @@ public class CaffeineCache extends AbstractValueAdaptingCache {
 
 	private class PutIfAbsentFunction implements Function<Object, Object> {
 
-		@Nullable
-		private final Object value;
+		private final @Nullable Object value;
 
 		boolean called;
 

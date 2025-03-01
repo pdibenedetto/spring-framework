@@ -22,6 +22,8 @@ import java.util.Map;
 
 import javax.sql.DataSource;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.SqlParameter;
@@ -149,37 +151,37 @@ public class SimpleJdbcCall extends AbstractJdbcCall implements SimpleJdbcCallOp
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public <T> T executeFunction(Class<T> returnType, Object... args) {
+	public <T> @Nullable T executeFunction(Class<T> returnType, Object... args) {
 		return (T) doExecute(args).get(getScalarOutParameterName());
 	}
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public <T> T executeFunction(Class<T> returnType, Map<String, ?> args) {
+	public <T> @Nullable T executeFunction(Class<T> returnType, Map<String, ?> args) {
 		return (T) doExecute(args).get(getScalarOutParameterName());
 	}
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public <T> T executeFunction(Class<T> returnType, SqlParameterSource args) {
+	public <T> @Nullable T executeFunction(Class<T> returnType, SqlParameterSource args) {
 		return (T) doExecute(args).get(getScalarOutParameterName());
 	}
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public <T> T executeObject(Class<T> returnType, Object... args) {
+	public <T> @Nullable T executeObject(Class<T> returnType, Object... args) {
 		return (T) doExecute(args).get(getScalarOutParameterName());
 	}
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public <T> T executeObject(Class<T> returnType, Map<String, ?> args) {
+	public <T> @Nullable T executeObject(Class<T> returnType, Map<String, ?> args) {
 		return (T) doExecute(args).get(getScalarOutParameterName());
 	}
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public <T> T executeObject(Class<T> returnType, SqlParameterSource args) {
+	public <T> @Nullable T executeObject(Class<T> returnType, SqlParameterSource args) {
 		return (T) doExecute(args).get(getScalarOutParameterName());
 	}
 

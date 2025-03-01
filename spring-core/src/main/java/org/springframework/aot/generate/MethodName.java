@@ -19,7 +19,8 @@ package org.springframework.aot.generate;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
-import org.springframework.lang.Nullable;
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
@@ -116,7 +117,7 @@ final class MethodName {
 		StringBuilder name = new StringBuilder(chars.length);
 		boolean uppercase = false;
 		for (char ch : chars) {
-			char outputChar = (!uppercase) ? ch : Character.toUpperCase(ch);
+			char outputChar = (!uppercase ? ch : Character.toUpperCase(ch));
 			name.append((!Character.isLetter(ch)) ? "" : outputChar);
 			uppercase = (ch == '.');
 		}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.env.CompositePropertySource;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -34,8 +35,8 @@ import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
+import org.springframework.util.PlaceholderResolutionException;
 import org.springframework.util.ReflectionUtils;
 
 /**
@@ -46,6 +47,7 @@ import org.springframework.util.ReflectionUtils;
  *
  * @author Stephane Nicoll
  * @author Sam Brannen
+ * @author Juergen Hoeller
  * @since 6.0
  * @see PropertySourceDescriptor
  */
@@ -58,14 +60,14 @@ public class PropertySourceProcessor {
 
 	private final ConfigurableEnvironment environment;
 
-	private final ResourceLoader resourceLoader;
+	private final ResourcePatternResolver resourcePatternResolver;
 
 	private final List<String> propertySourceNames = new ArrayList<>();
 
 
 	public PropertySourceProcessor(ConfigurableEnvironment environment, ResourceLoader resourceLoader) {
 		this.environment = environment;
-		this.resourceLoader = resourceLoader;
+		this.resourcePatternResolver = ResourcePatternUtils.getResourcePatternResolver(resourceLoader);
 	}
 
 
@@ -87,12 +89,13 @@ public class PropertySourceProcessor {
 		for (String location : locations) {
 			try {
 				String resolvedLocation = this.environment.resolveRequiredPlaceholders(location);
-				Resource resource = this.resourceLoader.getResource(resolvedLocation);
-				addPropertySource(factory.createPropertySource(name, new EncodedResource(resource, encoding)));
+				for (Resource resource : this.resourcePatternResolver.getResources(resolvedLocation)) {
+					addPropertySource(factory.createPropertySource(name, new EncodedResource(resource, encoding)));
+				}
 			}
 			catch (RuntimeException | IOException ex) {
-				// Placeholders not resolvable (IllegalArgumentException) or resource not found when trying to open it
-				if (ignoreResourceNotFound && (ex instanceof IllegalArgumentException || isIgnorableException(ex) ||
+				// Placeholders not resolvable or resource not found when trying to open it
+				if (ignoreResourceNotFound && (ex instanceof PlaceholderResolutionException || isIgnorableException(ex) ||
 						isIgnorableException(ex.getCause()))) {
 					if (logger.isInfoEnabled()) {
 						logger.info("Properties location [" + location + "] not resolvable: " + ex.getMessage());
@@ -135,8 +138,8 @@ public class PropertySourceProcessor {
 			propertySources.addLast(propertySource);
 		}
 		else {
-			String firstProcessed = this.propertySourceNames.get(this.propertySourceNames.size() - 1);
-			propertySources.addBefore(firstProcessed, propertySource);
+			String lastAdded = this.propertySourceNames.get(this.propertySourceNames.size() - 1);
+			propertySources.addBefore(lastAdded, propertySource);
 		}
 		this.propertySourceNames.add(name);
 	}

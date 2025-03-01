@@ -16,11 +16,13 @@
 
 package org.springframework.aop.aspectj;
 
+import java.util.Objects;
+
 import org.aspectj.weaver.tools.PointcutParser;
 import org.aspectj.weaver.tools.TypePatternMatcher;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.ClassFilter;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
@@ -37,8 +39,7 @@ public class TypePatternClassFilter implements ClassFilter {
 
 	private String typePattern = "";
 
-	@Nullable
-	private TypePatternMatcher aspectJTypePatternMatcher;
+	private @Nullable TypePatternMatcher aspectJTypePatternMatcher;
 
 
 	/**
@@ -124,7 +125,7 @@ public class TypePatternClassFilter implements ClassFilter {
 
 	@Override
 	public int hashCode() {
-		return ObjectUtils.nullSafeHashCode(this.typePattern);
+		return Objects.hashCode(this.typePattern);
 	}
 
 	@Override

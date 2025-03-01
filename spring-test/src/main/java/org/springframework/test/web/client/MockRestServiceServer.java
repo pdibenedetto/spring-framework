@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -140,7 +140,7 @@ public final class MockRestServiceServer {
 
 	/**
 	 * Return a builder for a {@code MockRestServiceServer} that should be used
-	 * to reply to the given {@code RestTemplate}.
+	 * to reply to the {@code RestClient} for the given {@code RestClient.Builder}.
 	 * @since 6.1
 	 */
 	public static MockRestServiceServerBuilder bindTo(RestClient.Builder restClientBuilder) {
@@ -158,7 +158,7 @@ public final class MockRestServiceServer {
 
 	/**
 	 * Return a builder for a {@code MockRestServiceServer} that should be used
-	 * to reply to the given {@code RestGatewaySupport}.
+	 * to reply to the {@code RestTemplate} for the given {@code RestGatewaySupport}.
 	 * @since 4.3
 	 */
 	public static MockRestServiceServerBuilder bindTo(RestGatewaySupport restGatewaySupport) {
@@ -179,7 +179,7 @@ public final class MockRestServiceServer {
 	/**
 	 * A shortcut for {@code bindTo(restGateway).build()}.
 	 * @param restGateway the REST gateway to set up for mock testing
-	 * @return the created mock server
+	 * @return the mock server
 	 */
 	public static MockRestServiceServer createServer(RestGatewaySupport restGateway) {
 		return bindTo(restGateway).build();
@@ -244,6 +244,10 @@ public final class MockRestServiceServer {
 			return this;
 		}
 
+		protected boolean shouldBufferContent() {
+			return this.bufferContent;
+		}
+
 		@Override
 		public MockRestServiceServer build() {
 			if (this.ignoreExpectOrder) {
@@ -258,9 +262,6 @@ public final class MockRestServiceServer {
 		public MockRestServiceServer build(RequestExpectationManager manager) {
 			MockRestServiceServer server = new MockRestServiceServer(manager);
 			ClientHttpRequestFactory factory = server.new MockClientHttpRequestFactory();
-			if (this.bufferContent) {
-				factory = new BufferingClientHttpRequestFactory(factory);
-			}
 			injectRequestFactory(factory);
 			return server;
 		}
@@ -281,6 +282,9 @@ public final class MockRestServiceServer {
 
 		@Override
 		protected void injectRequestFactory(ClientHttpRequestFactory requestFactory) {
+			if (shouldBufferContent()) {
+				this.restClientBuilder.bufferContent((uri, httpMethod) -> true);
+			}
 			this.restClientBuilder.requestFactory(requestFactory);
 		}
 	}
@@ -297,6 +301,9 @@ public final class MockRestServiceServer {
 
 		@Override
 		protected void injectRequestFactory(ClientHttpRequestFactory requestFactory) {
+			if (shouldBufferContent()) {
+				this.restTemplate.setBufferingPredicate((uri, httpMethod) -> true);
+			}
 			this.restTemplate.setRequestFactory(requestFactory);
 		}
 	}

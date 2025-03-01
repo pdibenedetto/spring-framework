@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,13 +27,16 @@ import java.util.function.BiConsumer;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.PropertyValue;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanDefinitionHolder;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.config.ConstructorArgumentValues.ValueHolder;
+import org.springframework.beans.factory.config.TypedStringValue;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.beans.factory.support.AbstractBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
@@ -47,7 +50,6 @@ import org.springframework.core.Ordered;
 import org.springframework.core.PriorityOrdered;
 import org.springframework.core.metrics.ApplicationStartup;
 import org.springframework.core.metrics.StartupStep;
-import org.springframework.lang.Nullable;
 
 /**
  * Delegate for AbstractApplicationContext's post-processor handling.
@@ -202,7 +204,7 @@ final class PostProcessorRegistrationDelegate {
 		invokeBeanFactoryPostProcessors(nonOrderedPostProcessors, beanFactory);
 
 		// Clear cached merged bean definitions since the post-processors might have
-		// modified the original metadata, e.g. replacing placeholders in values...
+		// modified the original metadata, for example, replacing placeholders in values...
 		beanFactory.clearMetadataCache();
 	}
 
@@ -224,7 +226,7 @@ final class PostProcessorRegistrationDelegate {
 
 		String[] postProcessorNames = beanFactory.getBeanNamesForType(BeanPostProcessor.class, true, false);
 
-		// Register BeanPostProcessorChecker that logs an info message when
+		// Register BeanPostProcessorChecker that logs a warn message when
 		// a bean is created during BeanPostProcessor instantiation, i.e. when
 		// a bean is not eligible for getting processed by all BeanPostProcessors.
 		int beanProcessorTargetCount = beanFactory.getBeanPostProcessorCount() + 1 + postProcessorNames.length;
@@ -311,8 +313,9 @@ final class PostProcessorRegistrationDelegate {
 
 	/**
 	 * Selectively invoke {@link MergedBeanDefinitionPostProcessor} instances
-	 * registered in the specified bean factory, resolving bean definitions as
-	 * well as any inner bean definitions that they may contain.
+	 * registered in the specified bean factory, resolving bean definitions and
+	 * any attributes if necessary as well as any inner bean definitions that
+	 * they may contain.
 	 * @param beanFactory the bean factory to use
 	 */
 	static void invokeMergedBeanDefinitionPostProcessors(DefaultListableBeanFactory beanFactory) {
@@ -381,7 +384,7 @@ final class PostProcessorRegistrationDelegate {
 
 
 	/**
-	 * BeanPostProcessor that logs an info message when a bean is created during
+	 * BeanPostProcessor that logs a warn message when a bean is created during
 	 * BeanPostProcessor instantiation, i.e. when a bean is not eligible for
 	 * getting processed by all BeanPostProcessors.
 	 */
@@ -434,8 +437,9 @@ final class PostProcessorRegistrationDelegate {
 					logger.warn("Bean '" + beanName + "' of type [" + bean.getClass().getName() +
 							"] is not eligible for getting processed by all BeanPostProcessors " +
 							"(for example: not eligible for auto-proxying). Is this bean getting eagerly " +
-							"injected into a currently created BeanPostProcessor " + bppsInCreation + "? " +
-							"Check the corresponding BeanPostProcessor declaration and its dependencies.");
+							"injected/applied to a currently created BeanPostProcessor " + bppsInCreation + "? " +
+							"Check the corresponding BeanPostProcessor declaration and its dependencies/advisors. " +
+							"If this bean does not have to be post-processed, declare it with ROLE_INFRASTRUCTURE.");
 				}
 			}
 			return bean;
@@ -477,20 +481,32 @@ final class PostProcessorRegistrationDelegate {
 			BeanDefinitionValueResolver valueResolver = new BeanDefinitionValueResolver(this.beanFactory, beanName, bd);
 			postProcessors.forEach(postProcessor -> postProcessor.postProcessMergedBeanDefinition(bd, beanType, beanName));
 			for (PropertyValue propertyValue : bd.getPropertyValues().getPropertyValueList()) {
-				Object value = propertyValue.getValue();
-				if (value instanceof AbstractBeanDefinition innerBd) {
-					Class<?> innerBeanType = resolveBeanType(innerBd);
-					resolveInnerBeanDefinition(valueResolver, innerBd, (innerBeanName, innerBeanDefinition)
-							-> postProcessRootBeanDefinition(postProcessors, innerBeanName, innerBeanType, innerBeanDefinition));
-				}
+				postProcessValue(postProcessors, valueResolver, propertyValue.getValue());
 			}
 			for (ValueHolder valueHolder : bd.getConstructorArgumentValues().getIndexedArgumentValues().values()) {
-				Object value = valueHolder.getValue();
-				if (value instanceof AbstractBeanDefinition innerBd) {
-					Class<?> innerBeanType = resolveBeanType(innerBd);
-					resolveInnerBeanDefinition(valueResolver, innerBd, (innerBeanName, innerBeanDefinition)
-							-> postProcessRootBeanDefinition(postProcessors, innerBeanName, innerBeanType, innerBeanDefinition));
-				}
+				postProcessValue(postProcessors, valueResolver, valueHolder.getValue());
+			}
+			for (ValueHolder valueHolder : bd.getConstructorArgumentValues().getGenericArgumentValues()) {
+				postProcessValue(postProcessors, valueResolver, valueHolder.getValue());
+			}
+		}
+
+		private void postProcessValue(List<MergedBeanDefinitionPostProcessor> postProcessors,
+				BeanDefinitionValueResolver valueResolver, @Nullable Object value) {
+			if (value instanceof BeanDefinitionHolder bdh
+					&& bdh.getBeanDefinition() instanceof AbstractBeanDefinition innerBd) {
+
+				Class<?> innerBeanType = resolveBeanType(innerBd);
+				resolveInnerBeanDefinition(valueResolver, innerBd, (innerBeanName, innerBeanDefinition)
+						-> postProcessRootBeanDefinition(postProcessors, innerBeanName, innerBeanType, innerBeanDefinition));
+			}
+			else if (value instanceof AbstractBeanDefinition innerBd) {
+				Class<?> innerBeanType = resolveBeanType(innerBd);
+				resolveInnerBeanDefinition(valueResolver, innerBd, (innerBeanName, innerBeanDefinition)
+						-> postProcessRootBeanDefinition(postProcessors, innerBeanName, innerBeanType, innerBeanDefinition));
+			}
+			else if (value instanceof TypedStringValue typedStringValue) {
+				resolveTypeStringValue(typedStringValue);
 			}
 		}
 
@@ -501,6 +517,15 @@ final class PostProcessorRegistrationDelegate {
 				resolver.accept(name, rbd);
 				return Void.class;
 			});
+		}
+
+		private void resolveTypeStringValue(TypedStringValue typedStringValue) {
+			try {
+				typedStringValue.resolveTargetType(this.beanFactory.getBeanClassLoader());
+			}
+			catch (ClassNotFoundException ex) {
+				// ignore
+			}
 		}
 
 		private Class<?> resolveBeanType(AbstractBeanDefinition bd) {

@@ -18,9 +18,11 @@ package org.springframework.aop.support;
 
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Objects;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.ClassFilter;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ObjectUtils;
 
@@ -85,6 +87,18 @@ public abstract class ClassFilters {
 		return new IntersectionClassFilter(classFilters);
 	}
 
+	/**
+	 * Return a class filter that represents the logical negation of the specified
+	 * filter instance.
+	 * @param classFilter the {@link ClassFilter} to negate
+	 * @return a filter that represents the logical negation of the specified filter
+	 * @since 6.1
+	 */
+	public static ClassFilter negate(ClassFilter classFilter) {
+		Assert.notNull(classFilter, "ClassFilter must not be null");
+		return new NegateClassFilter(classFilter);
+	}
+
 
 	/**
 	 * ClassFilter implementation for a union of the given ClassFilters.
@@ -116,14 +130,13 @@ public abstract class ClassFilters {
 
 		@Override
 		public int hashCode() {
-			return ObjectUtils.nullSafeHashCode(this.filters);
+			return Arrays.hashCode(this.filters);
 		}
 
 		@Override
 		public String toString() {
 			return getClass().getName() + ": " + Arrays.toString(this.filters);
 		}
-
 	}
 
 
@@ -157,14 +170,48 @@ public abstract class ClassFilters {
 
 		@Override
 		public int hashCode() {
-			return ObjectUtils.nullSafeHashCode(this.filters);
+			return Arrays.hashCode(this.filters);
 		}
 
 		@Override
 		public String toString() {
 			return getClass().getName() + ": " + Arrays.toString(this.filters);
 		}
+	}
 
+
+	/**
+	 * ClassFilter implementation for a logical negation of the given ClassFilter.
+	 */
+	@SuppressWarnings("serial")
+	private static class NegateClassFilter implements ClassFilter, Serializable {
+
+		private final ClassFilter original;
+
+		NegateClassFilter(ClassFilter original) {
+			this.original = original;
+		}
+
+		@Override
+		public boolean matches(Class<?> clazz) {
+			return !this.original.matches(clazz);
+		}
+
+		@Override
+		public boolean equals(Object other) {
+			return (this == other || (other instanceof NegateClassFilter that
+					&& this.original.equals(that.original)));
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(getClass(), this.original);
+		}
+
+		@Override
+		public String toString() {
+			return "Negate " + this.original;
+		}
 	}
 
 }

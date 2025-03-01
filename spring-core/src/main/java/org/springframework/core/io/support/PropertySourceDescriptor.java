@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@ package org.springframework.core.io.support;
 import java.util.Arrays;
 import java.util.List;
 
-import org.springframework.lang.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Descriptor for a {@link org.springframework.core.env.PropertySource PropertySource}.
  *
+ * @author Stephane Nicoll
+ * @since 6.0
  * @param locations the locations to consider
  * @param ignoreResourceNotFound whether a failure to find a property resource
  * should be ignored
@@ -31,8 +33,6 @@ import org.springframework.lang.Nullable;
  * @param propertySourceFactory the type of {@link PropertySourceFactory} to use,
  * or {@code null} to use the default
  * @param encoding the encoding, or {@code null} to use the default encoding
- * @author Stephane Nicoll
- * @since 6.0
  * @see org.springframework.core.env.PropertySource
  * @see org.springframework.context.annotation.PropertySource
  */

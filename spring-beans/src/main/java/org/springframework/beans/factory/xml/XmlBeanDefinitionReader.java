@@ -24,6 +24,7 @@ import java.util.Set;
 
 import javax.xml.parsers.ParserConfigurationException;
 
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.xml.sax.EntityResolver;
 import org.xml.sax.ErrorHandler;
@@ -46,7 +47,6 @@ import org.springframework.core.io.DescriptiveResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.io.support.EncodedResource;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.xml.SimpleSaxErrorHandler;
 import org.springframework.util.xml.XmlValidationModeDetector;
@@ -124,25 +124,18 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 
 	private SourceExtractor sourceExtractor = new NullSourceExtractor();
 
-	@Nullable
-	private NamespaceHandlerResolver namespaceHandlerResolver;
+	private @Nullable NamespaceHandlerResolver namespaceHandlerResolver;
 
 	private DocumentLoader documentLoader = new DefaultDocumentLoader();
 
-	@Nullable
-	private EntityResolver entityResolver;
+	private @Nullable EntityResolver entityResolver;
 
 	private ErrorHandler errorHandler = new SimpleSaxErrorHandler(logger);
 
 	private final XmlValidationModeDetector validationModeDetector = new XmlValidationModeDetector();
 
-	private final ThreadLocal<Set<EncodedResource>> resourcesCurrentlyBeingLoaded =
-			new NamedThreadLocal<>("XML bean definition resources currently being loaded"){
-				@Override
-				protected Set<EncodedResource> initialValue() {
-					return new HashSet<>(4);
-				}
-			};
+	private final ThreadLocal<Set<EncodedResource>> resourcesCurrentlyBeingLoaded = NamedThreadLocal.withInitial(
+			"XML bean definition resources currently being loaded", () -> new HashSet<>(4));
 
 
 	/**

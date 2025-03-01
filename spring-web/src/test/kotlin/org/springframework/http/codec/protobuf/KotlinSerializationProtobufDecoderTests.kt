@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.core.Ordered
 import org.springframework.core.ResolvableType
+import org.springframework.core.codec.DecodingException
 import org.springframework.core.io.buffer.DataBuffer
 import org.springframework.core.testfixture.codec.AbstractDecoderTests
 import org.springframework.http.MediaType
@@ -47,10 +48,12 @@ class KotlinSerializationProtobufDecoderTests : AbstractDecoderTests<KotlinSeria
 			assertThat(decoder.canDecode(ResolvableType.forClass(Pojo::class.java),mimeType)).isTrue()
 
 			assertThat(decoder.canDecode(ResolvableType.forClassWithGenerics(List::class.java, Int::class.java), mimeType)).isTrue()
-			assertThat(decoder.canDecode(ResolvableType.forClassWithGenerics(List::class.java, Ordered::class.java), mimeType)).isFalse()
+			assertThat(decoder.canDecode(ResolvableType.forClassWithGenerics(List::class.java, Ordered::class.java), mimeType)).isTrue()
+			assertThat(decoder.canDecode(ResolvableType.forClassWithGenerics(List::class.java, OrderedImpl::class.java), mimeType)).isFalse()
 			assertThat(decoder.canDecode(ResolvableType.forClassWithGenerics(List::class.java, Pojo::class.java), mimeType)).isTrue()
 			assertThat(decoder.canDecode(ResolvableType.forClassWithGenerics(ArrayList::class.java, Int::class.java), mimeType)).isTrue()
-			assertThat(decoder.canDecode(ResolvableType.forClass(Ordered::class.java), mimeType)).isFalse()
+			assertThat(decoder.canDecode(ResolvableType.forClass(Ordered::class.java), mimeType)).isTrue()
+			assertThat(decoder.canDecode(ResolvableType.forClass(OrderedImpl::class.java), mimeType)).isFalse()
 		}
 		assertThat(decoder.canDecode(ResolvableType.forClass(Pojo::class.java), null)).isTrue()
 		assertThat(decoder.canDecode(ResolvableType.forClass(String::class.java), null)).isFalse()
@@ -86,6 +89,21 @@ class KotlinSerializationProtobufDecoderTests : AbstractDecoderTests<KotlinSeria
 		}, null, null)
 	}
 
+	@Test
+	fun decodeToMonoWithUnexpectedFormat() {
+		val input = Mono.just(
+			bufferFactory.allocateBuffer(0),
+		)
+
+		val elementType = ResolvableType.forClass(Pojo::class.java)
+
+		testDecodeToMono(input, elementType, { step: FirstStep<Any> ->
+			step
+				.expectError(DecodingException::class.java)
+				.verify()
+		}, null, null)
+	}
+
 	private fun byteBuffer(value: Any): Mono<DataBuffer> {
 		return Mono.defer {
 			val bytes = ProtoBuf.Default.encodeToByteArray(serializer(Pojo::class.java), value)
@@ -95,6 +113,14 @@ class KotlinSerializationProtobufDecoderTests : AbstractDecoderTests<KotlinSeria
 		}
 	}
 
+
+	@Serializable
+	data class Pojo(val foo: String, val bar: String, val pojo: Pojo? = null)
+
+	class OrderedImpl : Ordered {
+		override fun getOrder(): Int {
+			return 0
+		}
+	}
+
 }
-@Serializable
-data class Pojo(val foo: String, val bar: String, val pojo: Pojo? = null)

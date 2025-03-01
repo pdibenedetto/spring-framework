@@ -24,8 +24,8 @@ import java.util.function.IntPredicate;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
+import org.jspecify.annotations.Nullable;
 
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ObjectUtils;
 
@@ -313,7 +313,7 @@ public class NettyDataBuffer implements PooledDataBuffer {
 		Assert.notNull(dest, "Dest must not be null");
 
 		dest = dest.duplicate().clear();
-		dest.put(destPos, this.byteBuf.nioBuffer(), srcPos, length);
+		dest.put(destPos, this.byteBuf.nioBuffer(srcPos, length), 0, length);
 	}
 
 	@Override

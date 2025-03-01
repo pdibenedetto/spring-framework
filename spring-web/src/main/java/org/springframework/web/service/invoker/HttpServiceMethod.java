@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,16 @@
 
 package org.springframework.web.service.invoker;
 
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.time.Duration;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.jspecify.annotations.Nullable;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -33,15 +35,20 @@ import org.springframework.core.KotlinDetector;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.ReactiveAdapter;
-import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.annotation.MergedAnnotation;
+import org.springframework.core.annotation.MergedAnnotationPredicates;
+import org.springframework.core.annotation.MergedAnnotations;
+import org.springframework.core.annotation.MergedAnnotations.SearchStrategy;
+import org.springframework.core.annotation.RepeatableContainers;
 import org.springframework.core.annotation.SynthesizingMethodParameter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.util.StringValueResolver;
@@ -55,6 +62,7 @@ import org.springframework.web.service.annotation.HttpExchange;
  * @author Rossen Stoyanchev
  * @author Sebastien Deleuze
  * @author Olga Maciaszek-Sharma
+ * @author Sam Brannen
  * @since 6.0
  */
 final class HttpServiceMethod {
@@ -118,14 +126,13 @@ final class HttpServiceMethod {
 	}
 
 
-	@Nullable
-	public Object invoke(Object[] arguments) {
+	public @Nullable Object invoke(@Nullable Object[] arguments) {
 		HttpRequestValues.Builder requestValues = this.requestValuesInitializer.initializeRequestValuesBuilder();
 		applyArguments(requestValues, arguments);
 		return this.responseFunction.execute(requestValues.build());
 	}
 
-	private void applyArguments(HttpRequestValues.Builder requestValues, Object[] arguments) {
+	private void applyArguments(HttpRequestValues.Builder requestValues, @Nullable Object[] arguments) {
 		Assert.isTrue(arguments.length == this.parameters.length, "Method argument mismatch");
 		for (int i = 0; i < arguments.length; i++) {
 			Object value = arguments[i];
@@ -139,19 +146,19 @@ final class HttpServiceMethod {
 			int index = i;
 			Assert.state(resolved, () ->
 					"Could not resolve parameter [" + this.parameters[index].getParameterIndex() + "] in " +
-							this.parameters[index].getExecutable().toGenericString() +
-							(StringUtils.hasText("No suitable resolver") ? ": " + "No suitable resolver" : ""));
+							this.parameters[index].getExecutable().toGenericString() + ": No suitable resolver");
 		}
 	}
 
 
 	/**
 	 * Factory for {@link HttpRequestValues} with values extracted from the type
-	 * and method-level {@link HttpExchange @HttpRequest} annotations.
+	 * and method-level {@link HttpExchange @HttpExchange} annotations.
 	 */
 	private record HttpRequestValuesInitializer(
 			@Nullable HttpMethod httpMethod, @Nullable String url,
 			@Nullable MediaType contentType, @Nullable List<MediaType> acceptMediaTypes,
+			MultiValueMap<String, String> headers,
 			Supplier<HttpRequestValues.Builder> requestValuesSupplier) {
 
 		public HttpRequestValues.Builder initializeRequestValuesBuilder() {
@@ -168,6 +175,8 @@ final class HttpServiceMethod {
 			if (this.acceptMediaTypes != null) {
 				requestValues.setAccept(this.acceptMediaTypes);
 			}
+			this.headers.forEach((name, values) ->
+					values.forEach(value -> requestValues.addHeader(name, value)));
 			return requestValues;
 		}
 
@@ -179,95 +188,172 @@ final class HttpServiceMethod {
 				Method method, Class<?> containingClass, @Nullable StringValueResolver embeddedValueResolver,
 				Supplier<HttpRequestValues.Builder> requestValuesSupplier) {
 
-			HttpExchange annot1 = AnnotatedElementUtils.findMergedAnnotation(containingClass, HttpExchange.class);
-			HttpExchange annot2 = AnnotatedElementUtils.findMergedAnnotation(method, HttpExchange.class);
+			List<AnnotationDescriptor> methodHttpExchanges = getAnnotationDescriptors(method);
+			Assert.state(!methodHttpExchanges.isEmpty(),
+					() -> "Expected @HttpExchange annotation on method " + method);
+			Assert.state(methodHttpExchanges.size() == 1,
+					() -> "Multiple @HttpExchange annotations found on method %s, but only one is allowed: %s"
+							.formatted(method, methodHttpExchanges));
 
-			Assert.notNull(annot2, "Expected HttpRequest annotation");
+			List<AnnotationDescriptor> typeHttpExchanges = getAnnotationDescriptors(containingClass);
+			Assert.state(typeHttpExchanges.size() <= 1,
+					() -> "Multiple @HttpExchange annotations found on %s, but only one is allowed: %s"
+							.formatted(containingClass, typeHttpExchanges));
 
-			HttpMethod httpMethod = initHttpMethod(annot1, annot2);
-			String url = initUrl(annot1, annot2, embeddedValueResolver);
-			MediaType contentType = initContentType(annot1, annot2);
-			List<MediaType> acceptableMediaTypes = initAccept(annot1, annot2);
+			HttpExchange methodAnnotation = methodHttpExchanges.get(0).httpExchange;
+			HttpExchange typeAnnotation = (!typeHttpExchanges.isEmpty() ? typeHttpExchanges.get(0).httpExchange : null);
+
+			HttpMethod httpMethod = initHttpMethod(typeAnnotation, methodAnnotation);
+			String url = initUrl(typeAnnotation, methodAnnotation, embeddedValueResolver);
+			MediaType contentType = initContentType(typeAnnotation, methodAnnotation);
+			List<MediaType> acceptableMediaTypes = initAccept(typeAnnotation, methodAnnotation);
+			MultiValueMap<String, String> headers = initHeaders(typeAnnotation, methodAnnotation, embeddedValueResolver);
 
 			return new HttpRequestValuesInitializer(
-					httpMethod, url, contentType, acceptableMediaTypes, requestValuesSupplier);
+					httpMethod, url, contentType, acceptableMediaTypes, headers, requestValuesSupplier);
 		}
 
-		@Nullable
-		private static HttpMethod initHttpMethod(@Nullable HttpExchange typeAnnot, HttpExchange annot) {
-
-			String value1 = (typeAnnot != null ? typeAnnot.method() : null);
-			String value2 = annot.method();
-
-			if (StringUtils.hasText(value2)) {
-				return HttpMethod.valueOf(value2);
+		private static @Nullable HttpMethod initHttpMethod(@Nullable HttpExchange typeAnnotation, HttpExchange methodAnnotation) {
+			String methodLevelMethod = methodAnnotation.method();
+			if (StringUtils.hasText(methodLevelMethod)) {
+				return HttpMethod.valueOf(methodLevelMethod);
 			}
 
-			if (StringUtils.hasText(value1)) {
-				return HttpMethod.valueOf(value1);
+			String typeLevelMethod = (typeAnnotation != null ? typeAnnotation.method() : null);
+			if (StringUtils.hasText(typeLevelMethod)) {
+				return HttpMethod.valueOf(typeLevelMethod);
 			}
 
 			return null;
 		}
 
-		@Nullable
-		private static String initUrl(
-				@Nullable HttpExchange typeAnnot, HttpExchange annot, @Nullable StringValueResolver embeddedValueResolver) {
+		@SuppressWarnings("NullAway") // Dataflow analysis limitation
+		private static @Nullable String initUrl(
+				@Nullable HttpExchange typeAnnotation, HttpExchange methodAnnotation,
+				@Nullable StringValueResolver embeddedValueResolver) {
 
-			String url1 = (typeAnnot != null ? typeAnnot.url() : null);
-			String url2 = annot.url();
+			String typeLevelUrl = (typeAnnotation != null ? typeAnnotation.url() : null);
+			String methodLevelUrl = methodAnnotation.url();
 
 			if (embeddedValueResolver != null) {
-				url1 = (url1 != null ? embeddedValueResolver.resolveStringValue(url1) : null);
-				url2 = embeddedValueResolver.resolveStringValue(url2);
+				typeLevelUrl = (typeLevelUrl != null ? embeddedValueResolver.resolveStringValue(typeLevelUrl) : null);
+				methodLevelUrl = embeddedValueResolver.resolveStringValue(methodLevelUrl);
 			}
 
-			boolean hasUrl1 = StringUtils.hasText(url1);
-			boolean hasUrl2 = StringUtils.hasText(url2);
+			boolean hasTypeLevelUrl = StringUtils.hasText(typeLevelUrl);
+			boolean hasMethodLevelUrl = StringUtils.hasText(methodLevelUrl);
 
-			if (hasUrl1 && hasUrl2) {
-				return (url1 + (!url1.endsWith("/") && !url2.startsWith("/") ? "/" : "") + url2);
+			if (hasTypeLevelUrl && hasMethodLevelUrl) {
+				return (typeLevelUrl + (!typeLevelUrl.endsWith("/") && !methodLevelUrl.startsWith("/") ? "/" : "") + methodLevelUrl);
 			}
 
-			if (!hasUrl1 && !hasUrl2) {
+			if (!hasTypeLevelUrl && !hasMethodLevelUrl) {
 				return null;
 			}
 
-			return (hasUrl2 ? url2 : url1);
+			return (hasMethodLevelUrl ? methodLevelUrl : typeLevelUrl);
 		}
 
-		@Nullable
-		private static MediaType initContentType(@Nullable HttpExchange typeAnnot, HttpExchange annot) {
-
-			String value1 = (typeAnnot != null ? typeAnnot.contentType() : null);
-			String value2 = annot.contentType();
-
-			if (StringUtils.hasText(value2)) {
-				return MediaType.parseMediaType(value2);
+		private static @Nullable MediaType initContentType(@Nullable HttpExchange typeAnnotation, HttpExchange methodAnnotation) {
+			String methodLevelContentType = methodAnnotation.contentType();
+			if (StringUtils.hasText(methodLevelContentType)) {
+				return MediaType.parseMediaType(methodLevelContentType);
 			}
 
-			if (StringUtils.hasText(value1)) {
-				return MediaType.parseMediaType(value1);
+			String typeLevelContentType = (typeAnnotation != null ? typeAnnotation.contentType() : null);
+			if (StringUtils.hasText(typeLevelContentType)) {
+				return MediaType.parseMediaType(typeLevelContentType);
 			}
 
 			return null;
 		}
 
-		@Nullable
-		private static List<MediaType> initAccept(@Nullable HttpExchange typeAnnot, HttpExchange annot) {
-
-			String[] value1 = (typeAnnot != null ? typeAnnot.accept() : null);
-			String[] value2 = annot.accept();
-
-			if (!ObjectUtils.isEmpty(value2)) {
-				return MediaType.parseMediaTypes(Arrays.asList(value2));
+		private static @Nullable List<MediaType> initAccept(@Nullable HttpExchange typeAnnotation, HttpExchange methodAnnotation) {
+			String[] methodLevelAccept = methodAnnotation.accept();
+			if (!ObjectUtils.isEmpty(methodLevelAccept)) {
+				return MediaType.parseMediaTypes(List.of(methodLevelAccept));
 			}
 
-			if (!ObjectUtils.isEmpty(value1)) {
-				return MediaType.parseMediaTypes(Arrays.asList(value1));
+			String[] typeLevelAccept = (typeAnnotation != null ? typeAnnotation.accept() : null);
+			if (!ObjectUtils.isEmpty(typeLevelAccept)) {
+				return MediaType.parseMediaTypes(List.of(typeLevelAccept));
 			}
 
 			return null;
+		}
+
+		private static MultiValueMap<String, String> initHeaders(
+				@Nullable HttpExchange typeAnnotation, HttpExchange methodAnnotation,
+				@Nullable StringValueResolver embeddedValueResolver) {
+
+			MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+			if (typeAnnotation != null) {
+				addHeaders(typeAnnotation.headers(), embeddedValueResolver, headers);
+			}
+			addHeaders(methodAnnotation.headers(), embeddedValueResolver, headers);
+			return headers;
+		}
+
+		private static void addHeaders(
+				String[] rawValues, @Nullable StringValueResolver embeddedValueResolver,
+				MultiValueMap<String, String> outputHeaders) {
+
+			for (String rawValue: rawValues) {
+				String[] pair = StringUtils.split(rawValue, "=");
+				if (pair == null) {
+					continue;
+				}
+				String name = pair[0].trim();
+				List<String> values = new ArrayList<>();
+				for (String value : StringUtils.commaDelimitedListToSet(pair[1])) {
+					if (embeddedValueResolver != null) {
+						value = embeddedValueResolver.resolveStringValue(value);
+					}
+					if (value != null) {
+						value = value.trim();
+						values.add(value);
+					}
+				}
+				if (!values.isEmpty()) {
+					outputHeaders.addAll(name, values);
+				}
+			}
+		}
+
+		private static List<AnnotationDescriptor> getAnnotationDescriptors(AnnotatedElement element) {
+			return MergedAnnotations.from(element, SearchStrategy.TYPE_HIERARCHY, RepeatableContainers.none())
+					.stream(HttpExchange.class)
+					.filter(MergedAnnotationPredicates.firstRunOf(MergedAnnotation::getAggregateIndex))
+					.map(AnnotationDescriptor::new)
+					.distinct()
+					.toList();
+		}
+
+
+		private static class AnnotationDescriptor {
+
+			private final HttpExchange httpExchange;
+			private final MergedAnnotation<?> root;
+
+			AnnotationDescriptor(MergedAnnotation<HttpExchange> mergedAnnotation) {
+				this.httpExchange = mergedAnnotation.synthesize();
+				this.root = mergedAnnotation.getRoot();
+			}
+
+			@Override
+			public boolean equals(Object obj) {
+				return (obj instanceof AnnotationDescriptor that && this.httpExchange.equals(that.httpExchange));
+			}
+
+			@Override
+			public int hashCode() {
+				return this.httpExchange.hashCode();
+			}
+
+			@Override
+			public String toString() {
+				return this.root.synthesize().toString();
+			}
 		}
 
 	}
@@ -278,16 +364,15 @@ final class HttpServiceMethod {
 	 */
 	private interface ResponseFunction {
 
-		@Nullable
-		Object execute(HttpRequestValues requestValues);
+		@Nullable Object execute(HttpRequestValues requestValues);
 
 	}
 
 	private record ExchangeResponseFunction(
-			Function<HttpRequestValues, Object> responseFunction) implements ResponseFunction {
+			Function<HttpRequestValues, @Nullable Object> responseFunction) implements ResponseFunction {
 
 		@Override
-		public Object execute(HttpRequestValues requestValues) {
+		public @Nullable Object execute(HttpRequestValues requestValues) {
 			return this.responseFunction.apply(requestValues);
 		}
 
@@ -304,8 +389,8 @@ final class HttpServiceMethod {
 			MethodParameter param = new MethodParameter(method, -1).nestedIfOptional();
 			Class<?> paramType = param.getNestedParameterType();
 
-			Function<HttpRequestValues, Object> responseFunction;
-			if (paramType.equals(void.class) || paramType.equals(Void.class)) {
+			Function<HttpRequestValues, @Nullable Object> responseFunction;
+			if (ClassUtils.isVoidType(paramType)) {
 				responseFunction = requestValues -> {
 					client.exchange(requestValues);
 					return null;
@@ -351,8 +436,8 @@ final class HttpServiceMethod {
 			@Nullable ReactiveAdapter returnTypeAdapter,
 			boolean blockForOptional, @Nullable Duration blockTimeout) implements ResponseFunction {
 
-		@Nullable
-		public Object execute(HttpRequestValues requestValues) {
+		@Override
+		public @Nullable Object execute(HttpRequestValues requestValues) {
 
 			Publisher<?> responsePublisher = this.responseFunction.apply(requestValues);
 
@@ -390,7 +475,7 @@ final class HttpServiceMethod {
 			Class<?> actualType = isSuspending ? actualParam.getParameterType() : actualParam.getNestedParameterType();
 
 			Function<HttpRequestValues, Publisher<?>> responseFunction;
-			if (actualType.equals(void.class) || actualType.equals(Void.class)) {
+			if (ClassUtils.isVoidType(actualType)) {
 				responseFunction = client::exchangeForMono;
 			}
 			else if (reactiveAdapter != null && reactiveAdapter.isNoValue()) {
@@ -442,7 +527,9 @@ final class HttpServiceMethod {
 
 			return request -> client.exchangeForEntityFlux(request, bodyType)
 					.map(entity -> {
-						Object body = reactiveAdapter.fromPublisher(entity.getBody());
+						Flux<?> entityBody = entity.getBody();
+						Assert.state(entityBody != null, "Entity body must not be null");
+						Object body = reactiveAdapter.fromPublisher(entityBody);
 						return new ResponseEntity<>(body, entity.getHeaders(), entity.getStatusCode());
 					});
 		}

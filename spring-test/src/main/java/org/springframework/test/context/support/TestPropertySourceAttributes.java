@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.annotation.MergedAnnotation;
 import org.springframework.core.io.ClassPathResource;
@@ -31,7 +32,6 @@ import org.springframework.core.log.LogMessage;
 import org.springframework.core.style.DefaultToStringStyler;
 import org.springframework.core.style.SimpleValueStyler;
 import org.springframework.core.style.ToStringCreator;
-import org.springframework.lang.Nullable;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.util.TestContextResourceUtils;
 import org.springframework.util.Assert;
@@ -73,7 +73,6 @@ class TestPropertySourceAttributes {
 	private final boolean inheritProperties;
 
 
-	@SuppressWarnings("unchecked")
 	TestPropertySourceAttributes(MergedAnnotation<TestPropertySource> mergedAnnotation) {
 		this.declaringClass = declaringClass(mergedAnnotation);
 		this.rootAnnotation = mergedAnnotation.getRoot();
@@ -126,6 +125,9 @@ class TestPropertySourceAttributes {
 				TestContextResourceUtils.convertToClasspathResourcePaths(declaringClass, true, locations);
 		Class<? extends PropertySourceFactory> factoryClass =
 				(Class<? extends PropertySourceFactory>) mergedAnnotation.getClass("factory");
+		if (factoryClass == PropertySourceFactory.class) {
+			factoryClass = null; // default factory type will be inferred
+		}
 		String encoding = mergedAnnotation.getString("encoding");
 		if (encoding.isBlank()) {
 			encoding = null; // default encoding will be inferred
@@ -141,7 +143,7 @@ class TestPropertySourceAttributes {
 	}
 
 	private void addPropertiesAndLocations(List<PropertySourceDescriptor> descriptors, String[] properties,
-			Class<?> declaringClass, String encoding, boolean prepend) {
+			Class<?> declaringClass, @Nullable String encoding, boolean prepend) {
 
 		if (hasNoLocations(descriptors) && ObjectUtils.isEmpty(properties)) {
 			String defaultPropertiesFile = detectDefaultPropertiesFile(declaringClass);

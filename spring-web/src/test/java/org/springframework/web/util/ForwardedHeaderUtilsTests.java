@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 
 package org.springframework.web.util;
 
+import java.net.InetSocketAddress;
 import java.net.URI;
+import java.util.Collections;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -29,10 +32,10 @@ import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.web.testfixture.servlet.MockHttpServletRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Unit tests for {@link UriComponentsBuilder}.
+ * Tests for {@link ForwardedHeaderUtils}.
  *
  * @author Rossen Stoyanchev
  */
@@ -169,8 +172,9 @@ class ForwardedHeaderUtilsTests {
 
 		HttpRequest httpRequest = new ServletServerHttpRequest(request);
 
-		assertThatIllegalArgumentException().isThrownBy(() ->
-				ForwardedHeaderUtils.adaptFromForwardedHeaders(httpRequest.getURI(), httpRequest.getHeaders()).build());
+		assertThatThrownBy(() ->
+				ForwardedHeaderUtils.adaptFromForwardedHeaders(httpRequest.getURI(), httpRequest.getHeaders()).build())
+				.isInstanceOf(IllegalArgumentException.class);
 	}
 
 	@Test
@@ -363,6 +367,11 @@ class ForwardedHeaderUtilsTests {
 			}
 
 			@Override
+			public Map<String, Object> getAttributes() {
+				return Collections.emptyMap();
+			}
+
+			@Override
 			public HttpHeaders getHeaders() {
 				return new HttpHeaders();
 			}
@@ -373,7 +382,7 @@ class ForwardedHeaderUtilsTests {
 	}
 
 	@Test  // SPR-11856
-	void fromHttpRequestForwardedHeader()  {
+	void fromHttpRequestForwardedHeader() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("Forwarded", "proto=https; host=84.198.58.199");
 		request.setScheme("http");
@@ -389,7 +398,7 @@ class ForwardedHeaderUtilsTests {
 	}
 
 	@Test
-	void fromHttpRequestForwardedHeaderQuoted()  {
+	void fromHttpRequestForwardedHeaderQuoted() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("Forwarded", "proto=\"https\"; host=\"84.198.58.199\"");
 		request.setScheme("http");
@@ -405,7 +414,7 @@ class ForwardedHeaderUtilsTests {
 	}
 
 	@Test
-	void fromHttpRequestMultipleForwardedHeader()  {
+	void fromHttpRequestMultipleForwardedHeader() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("Forwarded", "host=84.198.58.199;proto=https");
 		request.addHeader("Forwarded", "proto=ftp; host=1.2.3.4");
@@ -422,7 +431,7 @@ class ForwardedHeaderUtilsTests {
 	}
 
 	@Test
-	void fromHttpRequestMultipleForwardedHeaderComma()  {
+	void fromHttpRequestMultipleForwardedHeaderComma() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("Forwarded", "host=84.198.58.199 ;proto=https, proto=ftp; host=1.2.3.4");
 		request.setScheme("http");
@@ -438,7 +447,7 @@ class ForwardedHeaderUtilsTests {
 	}
 
 	@Test
-	void fromHttpRequestForwardedHeaderWithHostPortAndWithoutServerPort()  {
+	void fromHttpRequestForwardedHeaderWithHostPortAndWithoutServerPort() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("Forwarded", "proto=https; host=84.198.58.199:9090");
 		request.setScheme("http");
@@ -456,7 +465,7 @@ class ForwardedHeaderUtilsTests {
 	}
 
 	@Test
-	void fromHttpRequestForwardedHeaderWithHostPortAndServerPort()  {
+	void fromHttpRequestForwardedHeaderWithHostPortAndServerPort() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("Forwarded", "proto=https; host=84.198.58.199:9090");
 		request.setScheme("http");
@@ -475,7 +484,7 @@ class ForwardedHeaderUtilsTests {
 	}
 
 	@Test
-	void fromHttpRequestForwardedHeaderWithoutHostPortAndWithServerPort()  {
+	void fromHttpRequestForwardedHeaderWithoutHostPortAndWithServerPort() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("Forwarded", "proto=https; host=84.198.58.199");
 		request.setScheme("http");
@@ -494,7 +503,7 @@ class ForwardedHeaderUtilsTests {
 	}
 
 	@Test  // SPR-16262
-	void fromHttpRequestForwardedHeaderWithProtoAndServerPort()  {
+	void fromHttpRequestForwardedHeaderWithProtoAndServerPort() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("Forwarded", "proto=https");
 		request.setScheme("http");
@@ -529,6 +538,17 @@ class ForwardedHeaderUtilsTests {
 		assertThat(result.getPath()).isEqualTo("/rest/mobile/users/1");
 		assertThat(result.getPort()).isEqualTo(9090);
 		assertThat(result.toUriString()).isEqualTo("https://192.0.2.3:9090/rest/mobile/users/1");
+	}
+
+	@Test  // gh-34253
+	void fromHttpRequestXForwardedHeaderForIpv6Formatting() {
+		HttpHeaders headers = new HttpHeaders();
+		headers.add("X-Forwarded-For", "fd00:fefe:1::4, 192.168.0.1");
+
+		InetSocketAddress address =
+				ForwardedHeaderUtils.parseForwardedFor(URI.create("https://example.com"), headers, null);
+
+		assertThat(address.getHostName()).isEqualTo("[fd00:fefe:1::4]");
 	}
 
 }

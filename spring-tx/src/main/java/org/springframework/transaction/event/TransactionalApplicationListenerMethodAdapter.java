@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,8 +47,6 @@ import org.springframework.util.Assert;
 public class TransactionalApplicationListenerMethodAdapter extends ApplicationListenerMethodAdapter
 		implements TransactionalApplicationListener<ApplicationEvent> {
 
-	private final TransactionalEventListener annotation;
-
 	private final TransactionPhase transactionPhase;
 
 	private final List<SynchronizationCallback> callbacks = new CopyOnWriteArrayList<>();
@@ -63,11 +61,10 @@ public class TransactionalApplicationListenerMethodAdapter extends ApplicationLi
 	public TransactionalApplicationListenerMethodAdapter(String beanName, Class<?> targetClass, Method method) {
 		super(beanName, targetClass, method);
 		TransactionalEventListener eventAnn =
-				AnnotatedElementUtils.findMergedAnnotation(method, TransactionalEventListener.class);
+				AnnotatedElementUtils.findMergedAnnotation(getTargetMethod(), TransactionalEventListener.class);
 		if (eventAnn == null) {
 			throw new IllegalStateException("No TransactionalEventListener annotation found on method: " + method);
 		}
-		this.annotation = eventAnn;
 		this.transactionPhase = eventAnn.phase();
 	}
 
@@ -91,8 +88,8 @@ public class TransactionalApplicationListenerMethodAdapter extends ApplicationLi
 				logger.debug("Registered transaction synchronization for " + event);
 			}
 		}
-		else if (this.annotation.fallbackExecution()) {
-			if (this.annotation.phase() == TransactionPhase.AFTER_ROLLBACK && logger.isWarnEnabled()) {
+		else if (isDefaultExecution()) {
+			if (getTransactionPhase() == TransactionPhase.AFTER_ROLLBACK && logger.isWarnEnabled()) {
 				logger.warn("Processing " + event + " as a fallback execution on AFTER_ROLLBACK phase");
 			}
 			processEvent(event);

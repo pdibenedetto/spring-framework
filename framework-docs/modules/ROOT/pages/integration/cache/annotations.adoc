@@ -67,7 +67,7 @@ To provide a different default key generator, you need to implement the
 The default key generation strategy changed with the release of Spring 4.0. Earlier
 versions of Spring used a key generation strategy that, for multiple key parameters,
 considered only the `hashCode()` of parameters and not `equals()`. This could cause
-unexpected key collisions (see https://jira.spring.io/browse/SPR-10237[SPR-10237]
+unexpected key collisions (see {spring-framework-issues}/14870[spring-framework#14870]
 for background). The new `SimpleKeyGenerator` uses a compound key for such scenarios.
 
 If you want to keep using the previous key strategy, you can configure the deprecated
@@ -261,6 +261,17 @@ needs to be capable of `CompletableFuture`-based retrieval. The Spring-provided
 `CaffeineCacheManager` natively supports it when its asynchronous cache mode is
 enabled: set `setAsyncCacheMode(true)` on your `CaffeineCacheManager` instance.
 
+[source,java,indent=0,subs="verbatim,quotes"]
+----
+	@Bean
+	CacheManager cacheManager() {
+		CaffeineCacheManager cacheManager = new CaffeineCacheManager();
+		cacheManager.setCacheSpecification(...);
+		cacheManager.setAsyncCacheMode(true);
+		return cacheManager;
+	}
+----
+
 Last but not least, be aware that annotation-driven caching is not appropriate
 for sophisticated reactive interactions involving composition and back pressure.
 If you choose to declare `@Cacheable` on specific reactive methods, consider the
@@ -321,7 +332,7 @@ metadata, such as the argument names. The following table describes the items ma
 available to the context so that you can use them for key and conditional computations:
 
 [[cache-spel-context-tbl]]
-.Cache SpEL available metadata
+.Cache metadata available in SpEL expressions
 |===
 | Name| Location| Description| Example
 
@@ -347,7 +358,7 @@ available to the context so that you can use them for key and conditional comput
 
 | `args`
 | Root object
-| The arguments (as array) used for invoking the target
+| The arguments (as an object array) used for invoking the target
 | `#root.args[0]`
 
 | `caches`
@@ -357,9 +368,10 @@ available to the context so that you can use them for key and conditional comput
 
 | Argument name
 | Evaluation context
-| Name of any of the method arguments. If the names are not available
-  (perhaps due to having no debug information), the argument names are also available under the `#a<#arg>`
-  where `#arg` stands for the argument index (starting from `0`).
+| The name of a particular method argument. If the names are not available
+  (for example, because the code was compiled without the `-parameters` flag), individual
+  arguments are also available using the `#a<#arg>` syntax where `<#arg>` stands for the
+  argument index (starting from 0).
 | `#iban` or `#a0` (you can also use `#p0` or `#p<#arg>` notation as an alias).
 
 | `result`
@@ -489,9 +501,12 @@ Placing this annotation on the class does not turn on any caching operation.
 An operation-level customization always overrides a customization set on `@CacheConfig`.
 Therefore, this gives three levels of customizations for each cache operation:
 
-* Globally configured, available for `CacheManager`, `KeyGenerator`.
+* Globally configured, for example, through `CachingConfigurer`: see next section.
 * At the class level, using `@CacheConfig`.
 * At the operation level.
+
+NOTE: Provider-specific settings are typically available on the `CacheManager` bean,
+for example, on `CaffeineCacheManager`. These are effectively also global.
 
 
 [[cache-annotation-enable]]
@@ -504,30 +519,9 @@ disable it by removing only one configuration line rather than all the annotatio
 your code).
 
 To enable caching annotations add the annotation `@EnableCaching` to one of your
-`@Configuration` classes:
+`@Configuration` classes or use the `cache:annotation-driven` element with XML:
 
-[source,java,indent=0,subs="verbatim,quotes"]
-----
-	@Configuration
-	@EnableCaching
-	public class AppConfig {
-	}
-----
-
-Alternatively, for XML configuration you can use the `cache:annotation-driven` element:
-
-[source,xml,indent=0,subs="verbatim,quotes"]
-----
-	<beans xmlns="http://www.springframework.org/schema/beans"
-		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-		xmlns:cache="http://www.springframework.org/schema/cache"
-		xsi:schemaLocation="
-			http://www.springframework.org/schema/beans https://www.springframework.org/schema/beans/spring-beans.xsd
-			http://www.springframework.org/schema/cache https://www.springframework.org/schema/cache/spring-cache.xsd">
-
-			<cache:annotation-driven/>
-	</beans>
-----
+include-code::./CacheConfiguration[tag=snippet,indent=0]
 
 Both the `cache:annotation-driven` element and the `@EnableCaching` annotation let you
 specify various options that influence the way the caching behavior is added to the
@@ -541,7 +535,7 @@ switching to `aspectj` mode in combination with compile-time or load-time weavin
 
 NOTE: For more detail about advanced customizations (using Java configuration) that are
 required to implement `CachingConfigurer`, see the
-{api-spring-framework}/cache/annotation/CachingConfigurer.html[javadoc].
+{spring-framework-api}/cache/annotation/CachingConfigurer.html[javadoc].
 
 [[cache-annotation-driven-settings]]
 .Cache annotation settings
@@ -550,7 +544,7 @@ required to implement `CachingConfigurer`, see the
 | XML Attribute | Annotation Attribute | Default | Description
 
 | `cache-manager`
-| N/A (see the {api-spring-framework}/cache/annotation/CachingConfigurer.html[`CachingConfigurer`] javadoc)
+| N/A (see the {spring-framework-api}/cache/annotation/CachingConfigurer.html[`CachingConfigurer`] javadoc)
 | `cacheManager`
 | The name of the cache manager to use. A default `CacheResolver` is initialized behind
   the scenes with this cache manager (or `cacheManager` if not set). For more
@@ -558,19 +552,19 @@ required to implement `CachingConfigurer`, see the
   attribute.
 
 | `cache-resolver`
-| N/A (see the {api-spring-framework}/cache/annotation/CachingConfigurer.html[`CachingConfigurer`] javadoc)
+| N/A (see the {spring-framework-api}/cache/annotation/CachingConfigurer.html[`CachingConfigurer`] javadoc)
 | A `SimpleCacheResolver` using the configured `cacheManager`.
 | The bean name of the CacheResolver that is to be used to resolve the backing caches.
   This attribute is not required and needs to be specified only as an alternative to
   the 'cache-manager' attribute.
 
 | `key-generator`
-| N/A (see the {api-spring-framework}/cache/annotation/CachingConfigurer.html[`CachingConfigurer`] javadoc)
+| N/A (see the {spring-framework-api}/cache/annotation/CachingConfigurer.html[`CachingConfigurer`] javadoc)
 | `SimpleKeyGenerator`
 | Name of the custom key generator to use.
 
 | `error-handler`
-| N/A (see the {api-spring-framework}/cache/annotation/CachingConfigurer.html[`CachingConfigurer`] javadoc)
+| N/A (see the {spring-framework-api}/cache/annotation/CachingConfigurer.html[`CachingConfigurer`] javadoc)
 | `SimpleCacheErrorHandler`
 | The name of the custom cache error handler to use. By default, any exception thrown during
   a cache related operation is thrown back at the client.

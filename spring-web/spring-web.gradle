@@ -8,6 +8,7 @@ dependencies {
 	api(project(":spring-core"))
 	api("io.micrometer:micrometer-observation")
 	compileOnly("io.projectreactor.tools:blockhound")
+	compileOnly("com.google.code.findbugs:jsr305") // for Reactor
 	optional(project(":spring-aop"))
 	optional(project(":spring-context"))
 	optional(project(":spring-oxm"))
@@ -15,23 +16,18 @@ dependencies {
 	optional("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor")
 	optional("com.fasterxml.jackson.dataformat:jackson-dataformat-smile")
 	optional("com.fasterxml.jackson.dataformat:jackson-dataformat-xml")
+	optional("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
 	optional("com.fasterxml.woodstox:woodstox-core")
 	optional("com.google.code.gson:gson")
 	optional("com.google.protobuf:protobuf-java-util")
-	optional("com.googlecode.protobuf-java-format:protobuf-java-format")
 	optional("com.rometools:rome")
-	optional("com.squareup.okhttp3:okhttp")
-	optional("io.reactivex.rxjava3:rxjava")
+	optional("io.micrometer:context-propagation")
 	optional("io.netty:netty-buffer")
 	optional("io.netty:netty-handler")
 	optional("io.netty:netty-codec-http")
 	optional("io.netty:netty-transport")
-	optional("io.netty:netty5-buffer")
-	optional("io.netty:netty5-handler")
-	optional("io.netty:netty5-codec-http")
-	optional("io.netty:netty5-transport")
 	optional("io.projectreactor.netty:reactor-netty-http")
-	optional("io.projectreactor.netty:reactor-netty5-http")
+	optional("io.reactivex.rxjava3:rxjava")
 	optional("io.undertow:undertow-core")
 	optional("jakarta.el:jakarta.el-api")
 	optional("jakarta.faces:jakarta.faces-api")
@@ -48,10 +44,7 @@ dependencies {
 	optional("org.eclipse.jetty:jetty-server") {
 		exclude group: "jakarta.servlet", module: "jakarta.servlet-api"
 	}
-	optional("org.eclipse.jetty:jetty-servlet") {
-		exclude group: "jakarta.servlet", module: "jakarta.servlet-api"
-	}
-	optional("org.eclipse.jetty.ee10:jetty-ee10-servlet:12.0.0.beta2") {
+	optional("org.eclipse.jetty.ee11:jetty-ee11-servlet") {
 		exclude group: "jakarta.servlet", module: "jakarta.servlet-api"
 		exclude group: "org.eclipse.jetty", module: "jetty-ee"
 		exclude group: "org.eclipse.jetty", module: "jetty-security"
@@ -73,7 +66,8 @@ dependencies {
 	testFixturesImplementation("org.bouncycastle:bcpkix-jdk18on") {
 		because("needed by Netty's SelfSignedCertificate on JDK 15+")
 	}
-	testFixturesImplementation("org.eclipse.jetty.websocket:websocket-jetty-server")
+	testFixturesImplementation("org.eclipse.jetty.ee11.websocket:jetty-ee11-websocket-jetty-server")
+	testFixturesImplementation("org.eclipse.jetty.websocket:jetty-websocket-jetty-server")
 	testImplementation(project(":spring-core-test"))
 	testImplementation(testFixtures(project(":spring-beans")))
 	testImplementation(testFixtures(project(":spring-context")))
@@ -81,6 +75,8 @@ dependencies {
 	testImplementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8")
 	testImplementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 	testImplementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+	testImplementation("com.fasterxml.jackson.module:jackson-module-parameter-names")
+	testImplementation("com.fasterxml.jackson.dataformat:jackson-dataformat-csv")
 	testImplementation("com.squareup.okhttp3:mockwebserver")
 	testImplementation("io.micrometer:micrometer-observation-test")
 	testImplementation("io.projectreactor:reactor-test")
@@ -88,16 +84,16 @@ dependencies {
 	testImplementation("org.apache.tomcat:tomcat-util")
 	testImplementation("org.apache.tomcat.embed:tomcat-embed-core")
 	testImplementation("org.eclipse.jetty:jetty-server")
-	testImplementation("org.eclipse.jetty:jetty-servlet")
+	testImplementation("org.eclipse.jetty.ee11:jetty-ee11-servlet")
 	testImplementation("org.jetbrains.kotlin:kotlin-reflect")
 	testImplementation("org.skyscreamer:jsonassert")
 	testImplementation("org.xmlunit:xmlunit-assertj")
 	testImplementation("org.xmlunit:xmlunit-matchers")
-	testRuntimeOnly("com.sun.mail:jakarta.mail")
 	testRuntimeOnly("com.sun.xml.bind:jaxb-core")
 	testRuntimeOnly("com.sun.xml.bind:jaxb-impl")
 	testRuntimeOnly("jakarta.json:jakarta.json-api")
+	testRuntimeOnly("org.eclipse.angus:angus-mail")
 	testRuntimeOnly("org.eclipse:yasson")
 	testRuntimeOnly("org.glassfish:jakarta.el")
-	testRuntimeOnly("org.hibernate:hibernate-validator")
+	testRuntimeOnly("org.hibernate.validator:hibernate-validator")
 }

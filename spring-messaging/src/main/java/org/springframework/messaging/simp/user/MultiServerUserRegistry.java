@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,14 +23,16 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.event.SmartApplicationListener;
 import org.springframework.core.Ordered;
-import org.springframework.lang.Nullable;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.converter.MessageConverter;
 import org.springframework.util.Assert;
@@ -58,7 +60,7 @@ public class MultiServerUserRegistry implements SimpUserRegistry, SmartApplicati
 
 	private final boolean delegateApplicationEvents;
 
-	/* Cross-server session lookup (e.g. same user connected to multiple servers) */
+	/* Cross-server session lookup (for example, same user connected to multiple servers) */
 	private final SessionLookup sessionLookup = new SessionLookup();
 
 
@@ -116,8 +118,7 @@ public class MultiServerUserRegistry implements SimpUserRegistry, SmartApplicati
 	// SimpUserRegistry methods
 
 	@Override
-	@Nullable
-	public SimpUser getUser(String userName) {
+	public @Nullable SimpUser getUser(String userName) {
 		// Prefer remote registries due to cross-server SessionLookup
 		for (UserRegistrySnapshot registry : this.remoteRegistries.values()) {
 			SimpUser user = registry.getUserMap().get(userName);
@@ -182,7 +183,7 @@ public class MultiServerUserRegistry implements SimpUserRegistry, SmartApplicati
 
 	@Override
 	public String toString() {
-		return "local=[" + this.localRegistry +	"], remote=" + this.remoteRegistries;
+		return "local=[" + this.localRegistry + "], remote=" + this.remoteRegistries;
 	}
 
 
@@ -277,9 +278,8 @@ public class MultiServerUserRegistry implements SimpUserRegistry, SmartApplicati
 		// User sessions from "this" registry only (i.e. one server)
 		private final Set<TransferSimpSession> sessions;
 
-		// Cross-server session lookup (e.g. user connected to multiple servers)
-		@Nullable
-		private SessionLookup sessionLookup;
+		// Cross-server session lookup (for example, user connected to multiple servers)
+		private @Nullable SessionLookup sessionLookup;
 
 		/**
 		 * Default constructor for JSON deserialization.
@@ -311,9 +311,8 @@ public class MultiServerUserRegistry implements SimpUserRegistry, SmartApplicati
 			return this.name;
 		}
 
-		@Nullable
 		@Override
-		public Principal getPrincipal() {
+		public @Nullable Principal getPrincipal() {
 			return null;
 		}
 
@@ -326,8 +325,7 @@ public class MultiServerUserRegistry implements SimpUserRegistry, SmartApplicati
 		}
 
 		@Override
-		@Nullable
-		public SimpSession getSession(String sessionId) {
+		public @Nullable SimpSession getSession(String sessionId) {
 			if (this.sessionLookup != null) {
 				return this.sessionLookup.findSessions(getName()).get(sessionId);
 			}
@@ -413,7 +411,7 @@ public class MultiServerUserRegistry implements SimpUserRegistry, SmartApplicati
 			this.id = session.getId();
 			this.user = new TransferSimpUser();
 			Set<SimpSubscription> subscriptions = session.getSubscriptions();
-			this.subscriptions = new HashSet<>(subscriptions.size());
+			this.subscriptions = CollectionUtils.newHashSet(subscriptions.size());
 			for (SimpSubscription subscription : subscriptions) {
 				this.subscriptions.add(new TransferSimpSubscription(subscription));
 			}
@@ -539,7 +537,7 @@ public class MultiServerUserRegistry implements SimpUserRegistry, SmartApplicati
 
 		@Override
 		public int hashCode() {
-			return getId().hashCode() * 31 + ObjectUtils.nullSafeHashCode(getSession());
+			return Objects.hash(getId(), getSession());
 		}
 
 		@Override
