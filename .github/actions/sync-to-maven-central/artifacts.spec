@@ -10,6 +10,11 @@
               "path": {
                 "$nmatch": "org/springframework/framework-api/*"
               }
+            },
+            {
+              "path": {
+                "$nmatch": "org/springframework/framework-docs/*"
+              }
             }
           ]
         }
